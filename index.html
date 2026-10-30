@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zakgeld Tracker</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --card2: #273549;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --good: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { background: var(--bg); color: var(--text); min-height: 100vh; padding: 16px; max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  h2 { font-size: 1.05rem; margin: 20px 0 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .sub { color: var(--muted); font-size: .85rem; margin-bottom: 16px; }
+  .card { background: var(--card); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  .saldo { text-align: center; padding: 24px 16px; }
+  .saldo .label { color: var(--muted); font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; }
+  .saldo .amount { font-size: 2.6rem; font-weight: 700; margin: 6px 0; }
+  .saldo .amount.neg { color: var(--bad); }
+  .saldo .period { color: var(--muted); font-size: .85rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .stat { background: var(--card); border-radius: var(--radius); padding: 14px; }
+  .stat .k { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; }
+  .stat .v { font-size: 1.25rem; font-weight: 600; margin-top: 4px; }
+  .bar { height: 10px; background: var(--card2); border-radius: 6px; overflow: hidden; margin-top: 10px; }
+  .bar > div { height: 100%; border-radius: 6px; transition: width .4s; }
+  form { display: flex; flex-direction: column; gap: 10px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 120px; }
+  label { font-size: .8rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  input, select { width: 100%; background: var(--card2); border: 1px solid #334155; color: var(--text); border-radius: 10px; padding: 10px; font-size: 1rem; }
+  input:focus, select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  button { background: var(--accent); color: #082f49; border: none; border-radius: 10px; padding: 12px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  button:hover { filter: brightness(1.1); }
+  button.ghost { background: var(--card2); color: var(--text); }
+  button.danger { background: transparent; color: var(--bad); padding: 4px 8px; font-size: .85rem; }
+  .cat-row, .exp-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #334155; }
+  .cat-row:last-child, .exp-row:last-child { border-bottom: none; }
+  .icon { font-size: 1.4rem; width: 34px; text-align: center; flex-shrink: 0; }
+  .grow { flex: 1; min-width: 0; }
+  .cat-name { font-weight: 600; }
+  .cat-sub { color: var(--muted); font-size: .8rem; }
+  .amount-sm { font-weight: 600; white-space: nowrap; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+  .tabs button { flex: 1; background: var(--card); color: var(--muted); }
+  .tabs button.active { background: var(--accent); color: #082f49; }
+  .progress-wrap { display: flex; gap: 10px; align-items: center; }
+  .mini-bar { flex: 1; height: 8px; background: var(--card2); border-radius: 4px; overflow: hidden; }
+  .mini-bar > div { height: 100%; background: var(--accent); }
+  .pct { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+  .hidden { display: none; }
+  .period-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+  .period-nav .pname { font-weight: 600; text-align: center; }
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--card2); padding: 10px 18px; border-radius: 10px; font-size: .9rem; opacity: 0; transition: opacity .3s; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<h1>💰 Zakgeld Tracker</h1>
+<p class="sub">Volg je uitgaven per loonperiode. Data wordt enkel in deze browser bewaard.</p>
+
+<div class="tabs">
+  <button id="tab-huidig" class="active" onclick="showTab('huidig')">Huidige periode</button>
+  <button id="tab-geschiedenis" onclick="showTab('geschiedenis')">Vorige periodes</button>
+  <button id="tab-instellingen" onclick="showTab('instellingen')">Instellingen</button>
+</div>
+
+<!-- HUIDIGE PERIODE -->
+<div id="view-huidig">
+  <div class="card saldo">
+    <div class="label">Resterend saldo</div>
+    <div class="amount" id="saldo">€0,00</div>
+    <div class="period" id="saldo-period"></div>
+    <div class="bar"><div id="saldo-bar" style="width:0%"></div></div>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="k">Budget deze periode</div><div class="v" id="st-budget">–</div></div>
+    <div class="stat"><div class="k">Al uitgegeven</div><div class="v" id="st-uitgegeven">–</div></div>
+    <div class="stat"><div class="k">Per dag (gemiddeld)</div><div class="v" id="st-perdag">–</div></div>
+    <div class="stat"><div class="k">Budget verbruikt</div><div class="v" id="st-pct">–</div>
+      <div class="bar"><div id="st-pct-bar" style="width:0%"></div></div>
+    </div>
+    <div class="stat"><div class="k">Verbruik vs. verstreken tijd</div><div class="v" id="st-pace">–</div>
+      <div class="bar"><div id="st-pace-bar" style="width:0%"></div></div>
+    </div>
+    <div class="stat"><div class="k">Dagen resterend</div><div class="v" id="st-dagen">–</div></div>
+  </div>
+
+  <h2>Nieuwe uitgave</h2>
+  <div class="card">
+    <form onsubmit="return addExpense(event)">
+      <div class="row">
+        <div><label>Bedrag (€)</label><input type="number" id="exp-amount" step="0.01" min="0.01" required placeholder="0,00"></div>
+        <div><label>Datum</label><input type="date" id="exp-date" required></div>
+      </div>
+      <div class="row">
+        <div><label>Categorie</label><select id="exp-cat"></select></div>
+        <div><label>Omschrijving (optioneel)</label><input type="text" id="exp-note" placeholder="bv. etentje met vrienden"></div>
+      </div>
+      <button type="submit">+ Uitgave toevoegen</button>
+    </form>
+  </div>
+
+  <h2>Per categorie</h2>
+  <div class="card" id="cat-list"></div>
+
+  <h2>Recente uitgaven</h2>
+  <div class="card" id="exp-list"></div>
+</div>
+
+<!-- GESCHIEDENIS -->
+<div id="view-geschiedenis" class="hidden">
+  <div class="period-nav">
+    <button class="ghost" onclick="historyNav(-1)">← Vorige</button>
+    <div class="pname" id="hist-name"></div>
+    <button class="ghost" id="hist-next" onclick="historyNav(1)">Volgende →</button>
+  </div>
+  <div class="card saldo">
+    <div class="label">Resterend saldo</div>
+    <div class="amount" id="hist-saldo">–</div>
+    <div class="period" id="hist-period"></div>
+  </div>
+  <div class="grid">
+    <div class="stat"><div class="k">Budget</div><div class="v" id="hist-budget">–</div></div>
+    <div class="stat"><div class="k">Totaal uitgegeven</div><div class="v" id="hist-uitgegeven">–</div></div>
+    <div class="stat"><div class="k">% verbruikt</div><div class="v" id="hist-pct">–</div></div>
+  </div>
+  <h2>Per categorie</h2>
+  <div class="card" id="hist-cats"></div>
+  <h2>Alle uitgaven</h2>
+  <div class="card" id="hist-exps"></div>
+</div>
+
+<!-- INSTELLINGEN -->
+<div id="view-instellingen" class="hidden">
+  <h2>Loonperiode</h2>
+  <div class="card">
+    <form onsubmit="return savePeriod(event)">
+      <div class="row">
+        <div><label>Startdag van de maand</label>
+          <select id="set-day"></select>
+        </div>
+        <div><label>Budget voor periode (€)</label>
+          <input type="number" id="set-budget" step="0.01" min="0" required>
+        </div>
+      </div>
+      <p class="sub" id="set-preview"></p>
+      <button type="submit">Periode opslaan</button>
+    </form>
+  </div>
+
+  <h2>Categorieën beheren</h2>
+  <div class="card">
+    <form onsubmit="return addCategory(event)">
+      <div class="row">
+        <div><label>Naam</label><input type="text" id="cat-name" required placeholder="bv. Boeken"></div>
+        <div><label>Icoon (emoji)</label><input type="text" id="cat-icon" maxlength="4" value="🏷️"></div>
+      </div>
+      <button type="submit">Categorie toevoegen</button>
+    </form>
+  </div>
+  <div class="card" id="cat-manage"></div>
+
+  <h2>Data</h2>
+  <div class="card">
+    <div class="row">
+      <button class="ghost" onclick="exportData()">📥 Exporteer als bestand</button>
+      <button class="ghost" onclick="document.getElementById('import-file').click()">📤 Importeer bestand</button>
+      <input type="file" id="import-file" accept="application/json" class="hidden" onchange="importData(event)">
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const DEFAULT_CATEGORIES = [
+  { name: "Restaurant", icon: "🍽️" },
+  { name: "Gezondheid", icon: "💊" },
+  { name: "Openbaar Vervoer", icon: "🚌" },
+  { name: "Psycholoog", icon: "🧠" },
+  { name: "Supermarkt", icon: "🛒" },
+  { name: "Drogisterij", icon: "🧴" },
+  { name: "Kinesist", icon: "🏥" },
+];
+
+const store = {
+  load() {
+    try { return JSON.parse(localStorage.getItem("zakgeld")) || null; }
+    catch { return null; }
+  },
+  save(d) { localStorage.setItem("zakgeld", JSON.stringify(d)); },
+  defaults() {
+    const day = 25;
+    return {
+      periodDay: day,
+      periods: [ { start: currentPeriodStart(day).toISOString().slice(0,10), budget: 1000 } ],
+      expenses: [],
+      categories: DEFAULT_CATEGORIES.map(c => ({...c})),
+    };
+  },
+};
+
+function getData() {
+  let d = store.load();
+  if (!d) { d = store.defaults(); store.save(d); }
+  if (!d.periods || !d.periods.length) {
+    d.periods = [ { start: currentPeriodStart(d.periodDay || 25).toISOString().slice(0,10), budget: 1000 } ];
+  }
+  return d;
+}
+
+function clampDay(y, m, day) {
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  return Math.min(day, daysInMonth);
+}
+
+function currentPeriodStart(day) {
+  const now = new Date();
+  let y = now.getFullYear(), m = now.getMonth();
+  if (now.getDate() < day) m -= 1;
+  return new Date(y, m, clampDay(y, m, day));
+}
+
+function periodStartFor(dateStr, day) {
+  const d = new Date(dateStr + "T00:00:00");
+  let y = d.getFullYear(), m = d.getMonth();
+  if (d.getDate() < day) m -= 1;
+  return new Date(y, m, clampDay(y, m, day));
+}
+
+function periodEnd(start) {
+  return new Date(start.getFullYear(), start.getMonth() + 1, clampDay(start.getFullYear(), start.getMonth() + 1, start.getDate()));
+}
+
+function fmtEUR(n) {
+  return "€" + n.toLocaleString("nl-BE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtDate(d) {
+  return d.toLocaleDateString("nl-BE", { day: "numeric", month: "short", year: "numeric" });
+}
+function daysBetween(a, b) {
+  return Math.round((b - a) / 86400000);
+}
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.style.opacity = 1;
+  setTimeout(() => t.style.opacity = 0, 2200);
+}
+
+function showTab(name) {
+  ["huidig", "geschiedenis", "instellingen"].forEach(t => {
+    document.getElementById("view-" + t).classList.toggle("hidden", t !== name);
+    document.getElementById("tab-" + t).classList.toggle("active", t === name);
+  });
+  if (name === "huidig") renderCurrent();
+  if (name === "geschiedenis") { histIndex = 0; renderHistory(); }
+  if (name === "instellingen") renderSettings();
+}
+
+function renderCurrent() {
+  const d = getData();
+  const day = d.periodDay;
+  const start = currentPeriodStart(day);
+  let period = d.periods.find(p => p.start === start.toISOString().slice(0,10));
+  if (!period) { period = { start: start.toISOString().slice(0,10), budget: d.periods[d.periods.length-1].budget }; d.periods.push(period); store.save(d); }
+
+  const end = periodEnd(start);
+  const now = new Date(); now.setHours(0,0,0,0);
+  const totalDays = daysBetween(start, end);
+  const elapsed = Math.min(Math.max(daysBetween(start, now) + 1, 1), totalDays);
+  const daysLeft = Math.max(totalDays - elapsed, 0);
+
+  const exps = d.expenses.filter(e => {
+    const ps = periodStartFor(e.date, day);
+    return ps.getTime() === start.getTime();
+  });
+  const spent = exps.reduce((s, e) => s + e.amount, 0);
+  const saldo = period.budget - spent;
+  const pctSpent = period.budget > 0 ? (spent / period.budget) * 100 : 0;
+  const pctTime = (elapsed / totalDays) * 100;
+  const perDay = spent / elapsed;
+
+  const saldoEl = document.getElementById("saldo");
+  saldoEl.textContent = fmtEUR(saldo);
+  saldoEl.classList.toggle("neg", saldo < 0);
+  document.getElementById("saldo-period").textContent =
+    fmtDate(start) + " t/m " + fmtDate(new Date(end.getTime() - 86400000));
+  const bar = document.getElementById("saldo-bar");
+  bar.style.width = Math.max(0, Math.min(100, (saldo / period.budget) * 100)) + "%";
+  bar.style.background = saldo < 0 ? "var(--bad)" : saldo / period.budget < 0.25 ? "var(--warn)" : "var(--good)";
+
+  document.getElementById("st-budget").textContent = fmtEUR(period.budget);
+  document.getElementById("st-uitgegeven").textContent = fmtEUR(spent);
+  document.getElementById("st-perdag").textContent = fmtEUR(perDay);
+  document.getElementById("st-pct").textContent = pctSpent.toFixed(1) + "%";
+  document.getElementById("st-pct-bar").style.width = Math.min(100, pctSpent) + "%";
+  document.getElementById("st-pct-bar").style.background = pctSpent > 100 ? "var(--bad)" : pctSpent > pctTime ? "var(--warn)" : "var(--good)";
+
+  const paceDiff = pctSpent - pctTime;
+  document.getElementById("st-pace").textContent = (paceDiff >= 0 ? "+" : "") + paceDiff.toFixed(1) + " pp";
+  document.getElementById("st-pace").style.color = paceDiff > 10 ? "var(--bad)" : paceDiff > 0 ? "var(--warn)" : "var(--good)";
+  document.getElementById("st-pace-bar").style.width = Math.min(100, pctTime) + "%";
+  document.getElementById("st-dagen").textContent = daysLeft;
+
+  const catSel = document.getElementById("exp-cat");
+  catSel.innerHTML = d.categories.map(c => `<option value="${esc(c.name)}">${c.icon} ${esc(c.name)}</option>`).join("");
+  document.getElementById("exp-date").value = new Date().toISOString().slice(0,10);
+
+  const byCat = {};
+  exps.forEach(e => { byCat[e.cat] = (byCat[e.cat] || 0) + e.amount; });
+  const catList = document.getElementById("cat-list");
+  const entries = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+  catList.innerHTML = entries.length ? entries.map(([name, amt]) => {
+    const c = d.categories.find(x => x.name === name) || { icon: "🏷️" };
+    const pct = period.budget > 0 ? (amt / period.budget) * 100 : 0;
+    return `<div>
+      <div class="cat-row">
+        <div class="icon">${c.icon}</div>
+        <div class="grow"><div class="cat-name">${esc(name)}</div><div class="cat-sub">${pct.toFixed(1)}% van budget</div></div>
+        <div class="amount-sm">${fmtEUR(amt)}</div>
+      </div>
+      <div class="progress-wrap"><div class="mini-bar"><div style="width:${Math.min(100, (amt/spent)*100)}%"></div></div>
+      <div class="pct">${spent > 0 ? ((amt/spent)*100).toFixed(0) : 0}% van uitgaven</div></div>
+    </div>`;
+  }).join("") : '<p class="sub">Nog geen uitgaven deze periode.</p>';
+
+  const expList = document.getElementById("exp-list");
+  const sorted = [...exps].sort((a, b) => b.date.localeCompare(a.date));
+  expList.innerHTML = sorted.length ? sorted.slice(0, 50).map(e => {
+    const c = d.categories.find(x => x.name === e.cat) || { icon: "🏷️" };
+    return `<div class="exp-row">
+      <div class="icon">${c.icon}</div>
+      <div class="grow"><div class="cat-name">${esc(e.note || e.cat)}</div>
+      <div class="cat-sub">${esc(e.cat)} · ${fmtDate(new Date(e.date + "T00:00:00"))}</div></div>
+      <div class="amount-sm">−${fmtEUR(e.amount)}</div>
+      <button class="danger" onclick="deleteExpense('${e.id}')">✕</button>
+    </div>`;
+  }).join("") : '<p class="sub">Nog geen uitgaven.</p>';
+}
+
+let histIndex = 0;
+function historyNav(dir) {
+  const d = getData();
+  const all = allPeriods(d);
+  histIndex = Math.max(0, Math.min(all.length - 1, histIndex + dir));
+  renderHistory();
+}
+
+function allPeriods(d) {
+  const day = d.periodDay;
+  const starts = new Set(d.periods.map(p => p.start));
+  d.expenses.forEach(e => starts.add(periodStartFor(e.date, day).toISOString().slice(0,10)));
+  const cur = currentPeriodStart(day).toISOString().slice(0,10);
+  starts.add(cur);
+  return [...starts].sort().reverse().map(s => ({
+    start: s,
+    budget: (d.periods.find(p => p.start === s) || {}).budget ?? d.periods[d.periods.length-1].budget,
+  }));
+}
+
+function renderHistory() {
+  const d = getData();
+  const all = allPeriods(d);
+  if (!all.length) return;
+  const p = all[histIndex];
+  const start = new Date(p.start + "T00:00:00");
+  const end = periodEnd(start);
+  const lastDay = new Date(end.getTime() - 86400000);
+  const exps = d.expenses.filter(e => periodStartFor(e.date, d.periodDay).toISOString().slice(0,10) === p.start);
+  const spent = exps.reduce((s, e) => s + e.amount, 0);
+  const saldo = p.budget - spent;
+
+  document.getElementById("hist-name").textContent = fmtDate(start) + " – " + fmtDate(lastDay);
+  document.getElementById("hist-saldo").textContent = fmtEUR(saldo);
+  document.getElementById("hist-period").textContent = "Periode " + (histIndex + 1) + " van " + all.length;
+  document.getElementById("hist-budget").textContent = fmtEUR(p.budget);
+  document.getElementById("hist-uitgegeven").textContent = fmtEUR(spent);
+  document.getElementById("hist-pct").textContent = p.budget > 0 ? ((spent/p.budget)*100).toFixed(1) + "%" : "–";
+  document.getElementById("hist-next").style.visibility = histIndex < all.length - 1 ? "visible" : "hidden";
+
+  const byCat = {};
+  exps.forEach(e => { byCat[e.cat] = (byCat[e.cat] || 0) + e.amount; });
+  document.getElementById("hist-cats").innerHTML = Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([name, amt]) => {
+    const c = d.categories.find(x => x.name === name) || { icon: "🏷️" };
+    return `<div class="cat-row"><div class="icon">${c.icon}</div>
+      <div class="grow cat-name">${esc(name)}</div><div class="amount-sm">${fmtEUR(amt)}</div></div>`;
+  }).join("") || '<p class="sub">Geen uitgaven.</p>';
+
+  document.getElementById("hist-exps").innerHTML = [...exps].sort((a,b)=>b.date.localeCompare(a.date)).map(e => {
+    const c = d.categories.find(x => x.name === e.cat) || { icon: "🏷️" };
+    return `<div class="exp-row"><div class="icon">${c.icon}</div>
+      <div class="grow"><div class="cat-name">${esc(e.note || e.cat)}</div>
+      <div class="cat-sub">${esc(e.cat)} · ${fmtDate(new Date(e.date + "T00:00:00"))}</div></div>
+      <div class="amount-sm">−${fmtEUR(e.amount)}</div></div>`;
+  }).join("") || '<p class="sub">Geen uitgaven.</p>';
+}
+
+function renderSettings() {
+  const d = getData();
+  const sel = document.getElementById("set-day");
+  sel.innerHTML = Array.from({length: 12}, (_, i) => `<option value="${i+20}">${i+20}${["ste","ste","de","de","de","de","de","de","ste","ste","ste","ste"][i]}</option>`).join("");
+  sel.value = d.periodDay;
+  document.getElementById("set-budget").value = d.periods[d.periods.length-1].budget;
+  updatePeriodPreview();
+  document.getElementById("cat-manage").innerHTML = d.categories.map((c, i) => `
+    <div class="cat-row"><div class="icon">${c.icon}</div>
+    <div class="grow cat-name">${esc(c.name)}</div>
+    <button class="danger" onclick="deleteCategory(${i})">✕</button></div>`).join("");
+}
+
+function updatePeriodPreview() {
+  const day = parseInt(document.getElementById("set-day").value);
+  const s = currentPeriodStart(day);
+  const e = new Date(periodEnd(s).getTime() - 86400000);
+  document.getElementById("set-preview").textContent =
+    `Huidige periode: ${fmtDate(s)} t/m ${fmtDate(e)}`;
+}
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("set-day").addEventListener("change", updatePeriodPreview);
+});
+
+function savePeriod(e) {
+  e.preventDefault();
+  const d = getData();
+  d.periodDay = parseInt(document.getElementById("set-day").value);
+  const start = currentPeriodStart(d.periodDay).toISOString().slice(0,10);
+  let p = d.periods.find(x => x.start === start);
+  if (p) p.budget = parseFloat(document.getElementById("set-budget").value);
+  else d.periods.push({ start, budget: parseFloat(document.getElementById("set-budget").value) });
+  d.periods.sort((a,b) => a.start.localeCompare(b.start));
+  store.save(d);
+  toast("Periode opgeslagen");
+  renderCurrent();
+  return false;
+}
+
+function addExpense(e) {
+  e.preventDefault();
+  const d = getData();
+  d.expenses.push({
+    id: Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+    amount: parseFloat(document.getElementById("exp-amount").value),
+    date: document.getElementById("exp-date").value,
+    cat: document.getElementById("exp-cat").value,
+    note: document.getElementById("exp-note").value.trim(),
+  });
+  store.save(d);
+  document.getElementById("exp-amount").value = "";
+  document.getElementById("exp-note").value = "";
+  toast("Uitgave toegevoegd");
+  renderCurrent();
+  return false;
+}
+
+function deleteExpense(id) {
+  const d = getData();
+  d.expenses = d.expenses.filter(x => x.id !== id);
+  store.save(d);
+  renderCurrent();
+}
+
+function addCategory(e) {
+  e.preventDefault();
+  const d = getData();
+  const name = document.getElementById("cat-name").value.trim();
+  if (!name) return false;
+  if (d.categories.some(c => c.name.toLowerCase() === name.toLowerCase())) { toast("Bestaat al"); return false; }
+  d.categories.push({ name, icon: document.getElementById("cat-icon").value.trim() || "🏷️" });
+  store.save(d);
+  document.getElementById("cat-name").value = "";
+  renderSettings();
+  toast("Categorie toegevoegd");
+  return false;
+}
+
+function deleteCategory(i) {
+  const d = getData();
+  d.categories.splice(i, 1);
+  store.save(d);
+  renderSettings();
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(getData(), null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "zakgeld-backup.json";
+  a.click();
+}
+
+function importData(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try { store.save(JSON.parse(r.result)); toast("Data geïmporteerd"); showTab("huidig"); }
+    catch { toast("Ongeldig bestand"); }
+  };
+  r.readAsText(f);
+}
+
+renderCurrent();
+</script>
+</body>
+</html>
