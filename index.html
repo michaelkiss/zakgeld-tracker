@@ -102,7 +102,7 @@ input[type="date"] { display: block; line-height: 26px; }
   <div class="card">
     <form onsubmit="return addExpense(event)">
       <div class="row">
-        <div><label>Bedrag (€)</label><input type="text" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" id="exp-amount" required placeholder="0,00"></div>
+        <div><label>Bedrag (€)</label><input type="text" inputmode="decimal" id="exp-amount" required placeholder="0,00" oninput="sanitizeAmount(this)"></div>
         <div><label>Datum</label><input type="date" id="exp-date" required></div>
       </div>
       <div class="row">
@@ -153,7 +153,7 @@ input[type="date"] { display: block; line-height: 26px; }
           <select id="set-day"></select>
         </div>
         <div><label>Budget voor periode (€)</label>
-          <input type="text" inputmode="decimal" pattern="[0-9]*[.,]?[0-9]*" id="set-budget" required>
+          <input type="text" inputmode="decimal" id="set-budget" required oninput="sanitizeAmount(this)">
         </div>
       </div>
       <p class="sub" id="set-preview"></p>
@@ -255,6 +255,17 @@ function daysBetween(a, b) {
   return Math.round((b - a) / 86400000);
 }
 function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+function parseAmount(s) {
+  return parseFloat(String(s).replace(/\./g, ",").replace(",", "."));
+}
+function sanitizeAmount(el) {
+  let v = el.value.replace(/\./g, ",");
+  const parts = v.split(",");
+  if (parts.length > 2) v = parts[0] + "," + parts.slice(1).join("");
+  if (parts[1] && parts[1].length > 2) v = parts[0] + "," + parts[1].slice(0, 2);
+  el.value = v;
+}
 
 function toast(msg) {
   const t = document.getElementById("toast");
@@ -440,8 +451,8 @@ function savePeriod(e) {
   d.periodDay = parseInt(document.getElementById("set-day").value);
   const start = currentPeriodStart(d.periodDay).toISOString().slice(0,10);
   let p = d.periods.find(x => x.start === start);
-  if (p) p.budget = parseFloat(document.getElementById("set-budget").value);
-  else d.periods.push({ start, budget: parseFloat(document.getElementById("set-budget").value) });
+  if (p) p.budget = parseAmount(document.getElementById("set-budget").value);
+  else d.periods.push({ start, budget: parseAmount(document.getElementById("set-budget").value) });
   d.periods.sort((a,b) => a.start.localeCompare(b.start));
   store.save(d);
   toast("Periode opgeslagen");
@@ -454,7 +465,7 @@ function addExpense(e) {
   const d = getData();
   d.expenses.push({
     id: Date.now() + "-" + Math.random().toString(36).slice(2, 8),
-    amount: parseFloat(document.getElementById("exp-amount").value),
+    amount: parseAmount(document.getElementById("exp-amount").value),
     date: document.getElementById("exp-date").value,
     cat: document.getElementById("exp-cat").value,
     note: document.getElementById("exp-note").value.trim(),
